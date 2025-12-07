@@ -39,7 +39,7 @@ class UserRepository {
       return result.rows[0] || null;
     } catch (error) {
       console.error('Error fetching user by ID:', error);
-      throw new Error('Database connection timeout');
+      throw error;
     }
   }
 
@@ -64,6 +64,9 @@ class UserRepository {
    * @returns {Promise} Created user object
    */
   async create(userData) {
+    if (!userData || !userData.name || !userData.email) {
+      throw new Error('User data must include name and email');
+    }
     try {
       const query = 'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *';
       const result = await queryWithRetry(query, [userData.name, userData.email]);
@@ -81,9 +84,27 @@ class UserRepository {
    * @returns {Promise} Updated user object
    */
   async update(userId, userData) {
+    if (!userData || (!userData.name && !userData.email)) {
+      throw new Error('User data must include at least name or email to update');
+    }
     try {
-      const query = 'UPDATE users SET name = $1, email = $2 WHERE id = $3 RETURNING *';
-      const result = await queryWithRetry(query, [userData.name, userData.email, userId]);
+      // Build dynamic update query for partial updates
+      const updates = [];
+      const values = [];
+      let paramCount = 1;
+      
+      if (userData.name !== undefined) {
+        updates.push(`name = $${paramCount++}`);
+        values.push(userData.name);
+      }
+      if (userData.email !== undefined) {
+        updates.push(`email = $${paramCount++}`);
+        values.push(userData.email);
+      }
+      
+      values.push(userId);
+      const query = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`;
+      const result = await queryWithRetry(query, values);
       return result.rows[0];
     } catch (error) {
       console.error('Error updating user:', error);
